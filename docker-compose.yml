@@ -1,0 +1,47 @@
+# ============================================================================
+# Curatore Document Service - Docker Compose
+# ============================================================================
+# Standalone document format conversion service.
+# Connects to the curatore-network so curatore-v2 services can reach it.
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+# ============================================================================
+
+services:
+  document-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: curatore-document-service
+    volumes:
+      # Hot-reload app code during development
+      - ./app:/app/app
+    ports:
+      - "8010:8010"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEBUG=${DEBUG:-false}
+      - CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000"]
+      - MAX_FILE_SIZE=${MAX_FILE_SIZE:-52428800}
+      - UPLOAD_DIR=/tmp/document_uploads
+      # API key auth (reads from .env; unset = dev mode, no auth required)
+      - SERVICE_API_KEY=${SERVICE_API_KEY:-}
+      # Docling (optional - uncomment if running Docling)
+      # - DOCLING_SERVICE_URL=${DOCLING_SERVICE_URL:-}
+      # - DOCLING_TIMEOUT=${DOCLING_TIMEOUT:-300}
+      # - DOCLING_VERIFY_SSL=${DOCLING_VERIFY_SSL:-true}
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - curatore-network
+
+networks:
+  curatore-network:
+    external: true
