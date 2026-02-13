@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 
 from ....config import settings
-from ....models import CapabilitiesResponse, SupportedFormats
+from ....models import CapabilitiesResponse, DoclingStatus, SupportedFormats
+from ....services.docling_health_service import docling_health_service
 from ....services.extraction_service import SUPPORTED_EXTS
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -11,8 +12,16 @@ ALL_EXTRACTION_EXTS = sorted(list(SUPPORTED_EXTS | {".pdf"}))
 
 
 @router.get("/health")
-def health():
-    return {"status": "ok", "service": "document-service"}
+async def health():
+    if docling_health_service.is_configured and docling_health_service.needs_recheck():
+        await docling_health_service.check_health()
+
+    result = {"status": "ok", "service": "document-service"}
+
+    status = docling_health_service.get_status()
+    result["docling"] = status
+
+    return result
 
 
 @router.get("/supported-formats", response_model=SupportedFormats)
@@ -20,11 +29,17 @@ def supported_formats():
     return SupportedFormats(extensions=ALL_EXTRACTION_EXTS)
 
 
-@router.get("/capabilities", response_model=CapabilitiesResponse)
-def capabilities():
-    return CapabilitiesResponse(
-        extraction_formats=ALL_EXTRACTION_EXTS,
-        generation_formats=["pdf", "docx", "csv"],
-        triage_available=True,
-        docling_available=bool(settings.DOCLING_SERVICE_URL),
-    )
+@router.get("/capabilities", response_model=None)
+async def capabilities():
+    if docling_health_service.is_configured and docling_health_service.needs_recheck():
+        await docling_health_service.check_health()
+
+    status = docling_health_service.get_status()
+
+    return {
+        "extraction_formats": ALL_EXTRACTION_EXTS,
+        "generation_formats": ["pdf", "docx", "csv"],
+        "triage_available": True,
+        "docling_available": docling_health_service.docling_enabled,
+        "docling": status,
+    }

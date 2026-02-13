@@ -81,9 +81,19 @@ class GenerateCsvRequest(BaseModel):
 # System
 # ---------------------------------------------------------------------------
 
+class DoclingStatus(BaseModel):
+    """Docling service reachability status."""
+    configured: bool
+    reachable: Optional[bool] = None
+    last_error: Optional[str] = None
+    last_check_age_seconds: Optional[int] = None
+    service_url: Optional[str] = None
+
+
 class CapabilitiesResponse(BaseModel):
     """Service capabilities."""
     extraction_formats: List[str]
     generation_formats: List[str]
     triage_available: bool
     docling_available: bool
+    docling: Optional[DoclingStatus] = None

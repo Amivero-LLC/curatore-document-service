@@ -13,12 +13,19 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 from ..config import settings
+from .docling_health_service import docling_health_service
 
 logger = logging.getLogger("document_service.docling_proxy")
 
 
 # Cached detected endpoint
 _detected_endpoint: Optional[str] = None
+
+
+def _reset_detected_endpoint() -> None:
+    """Reset cached endpoint so detection re-runs when Docling recovers."""
+    global _detected_endpoint
+    _detected_endpoint = None
 
 
 def _get_docling_params(
@@ -220,6 +227,7 @@ async def extract_via_docling(
                     break
 
                 if response is None:
+                    docling_health_service.invalidate()
                     return ("", "error", False, None)
 
                 response.raise_for_status()
@@ -265,11 +273,14 @@ async def extract_via_docling(
             if attempt < max_retries:
                 continue
             else:
+                docling_health_service.invalidate()
+                _reset_detected_endpoint()
                 return ("", "error", False, None)
 
         except httpx.HTTPStatusError as e:
             error_msg = f"HTTP {e.response.status_code}: {e.response.text[:200]}"
             logger.error("Docling extraction failed for %s: %s", filename, error_msg)
+            docling_health_service.invalidate()
             return ("", "error", False, None)
 
         except Exception as e:
@@ -280,6 +291,9 @@ async def extract_via_docling(
             if attempt < max_retries:
                 continue
             else:
+                docling_health_service.invalidate()
+                _reset_detected_endpoint()
                 return ("", "error", False, None)
 
+    docling_health_service.invalidate()
     return ("", "error", False, None)

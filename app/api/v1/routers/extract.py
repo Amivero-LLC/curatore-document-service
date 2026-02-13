@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Uplo
 
 from ....config import settings
 from ....models import ExtractionOptions, ExtractionResult, TriageInfo
+from ....services.docling_health_service import docling_health_service
 from ....services.extraction_service import extract_markdown, save_upload_to_disk
 from ....services.metadata_extractor import extract_document_metadata
 from ....services.pdf_extraction_service import extract_pdf
@@ -73,11 +74,16 @@ async def extract(
             path,
         )
 
+        # Lazy TTL recheck of Docling health before triage
+        if docling_health_service.needs_recheck():
+            await docling_health_service.check_health()
+
         # Run triage to determine engine
         from pathlib import Path as PPath
         triage_plan = await triage_service.triage(
             file_path=PPath(path),
             mime_type=file.content_type,
+            docling_enabled=docling_health_service.docling_enabled,
         )
 
         # Allow caller to override engine
@@ -88,6 +94,8 @@ async def extract(
         method = "error"
         ocr_used = False
         page_count = None
+        fallback_used = False
+        fallback_from = None
 
         if selected_engine == "unsupported":
             elapsed_ms = int((time.time() - start_time) * 1000)
@@ -109,6 +117,38 @@ async def extract(
                 filename=file.filename,
                 docling_params=triage_plan.get("docling_params"),
             )
+
+            # Fallback if Docling returned empty/error
+            if not content_md:
+                ext = PPath(path).suffix.lower()
+                if ext == ".pdf":
+                    fallback_engine = "fast_pdf"
+                else:
+                    fallback_engine = "markitdown"
+
+                logger.warning(
+                    "[%s] EXTRACT_FALLBACK: Docling failed for %s, falling back to %s",
+                    request_id,
+                    file.filename,
+                    fallback_engine,
+                )
+
+                docling_health_service.invalidate()
+
+                if fallback_engine == "fast_pdf":
+                    content_md, method, ocr_used, page_count = extract_pdf(
+                        path=path,
+                        filename=file.filename,
+                    )
+                else:
+                    content_md, method, ocr_used, page_count = extract_markdown(
+                        path=path,
+                        filename=file.filename,
+                        media_type=file.content_type or "",
+                    )
+
+                fallback_used = True
+                fallback_from = "docling"
 
         else:
             # markitdown (default for office/text/email)
@@ -142,13 +182,14 @@ async def extract(
         )
 
         logger.info(
-            "[%s] EXTRACT_SUCCESS: filename=%s, chars=%d, method=%s, engine=%s, elapsed=%dms",
+            "[%s] EXTRACT_SUCCESS: filename=%s, chars=%d, method=%s, engine=%s, elapsed=%dms%s",
             request_id,
             file.filename,
             len(content_md),
             method,
             selected_engine,
             elapsed_ms,
+            f", fallback_from={fallback_from}" if fallback_used else "",
         )
 
         triage_info = TriageInfo(
@@ -163,6 +204,17 @@ async def extract(
             table_count=triage_plan.get("table_count"),
         )
 
+        metadata = {
+            "upload_path": path,
+            "request_id": request_id,
+            "elapsed_ms": elapsed_ms,
+            **doc_metadata,
+        }
+
+        if fallback_used:
+            metadata["fallback_from"] = fallback_from
+            metadata["fallback_to"] = method
+
         return ExtractionResult(
             filename=file.filename,
             content_markdown=content_md,
@@ -171,12 +223,7 @@ async def extract(
             ocr_used=ocr_used,
             page_count=page_count,
             media_type=file.content_type,
-            metadata={
-                "upload_path": path,
-                "request_id": request_id,
-                "elapsed_ms": elapsed_ms,
-                **doc_metadata,
-            },
+            metadata=metadata,
             triage=triage_info,
         )
 

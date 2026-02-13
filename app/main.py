@@ -1,3 +1,6 @@
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -6,6 +9,29 @@ from .api.v1.routers import generate as generate_router
 from .api.v1.routers import system as system_router
 from .config import settings
 from .middleware.api_key import ApiKeyMiddleware
+from .services.docling_health_service import docling_health_service
+
+logger = logging.getLogger("document_service.startup")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: probe Docling reachability
+    if docling_health_service.is_configured:
+        reachable = await docling_health_service.check_health(force=True)
+        if reachable:
+            logger.info("Docling service is reachable at %s", settings.DOCLING_SERVICE_URL)
+        else:
+            status = docling_health_service.get_status()
+            logger.warning(
+                "Docling service is UNREACHABLE at %s: %s",
+                settings.DOCLING_SERVICE_URL,
+                status.get("last_error", "unknown"),
+            )
+    else:
+        logger.info("Docling service not configured (DOCLING_SERVICE_URL is empty)")
+    yield
+
 
 app = FastAPI(
     title=settings.API_TITLE,
@@ -14,6 +40,7 @@ app = FastAPI(
     openapi_url="/api/v1/openapi.json",
     docs_url="/api/v1/docs",
     redoc_url="/api/v1/redoc",
+    lifespan=lifespan,
 )
 
 # Middleware (order matters: first added = outermost)
