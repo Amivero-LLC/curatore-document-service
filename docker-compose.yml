@@ -28,10 +28,10 @@ services:
       - UPLOAD_DIR=/tmp/document_uploads
       # API key auth (reads from .env; unset = dev mode, no auth required)
       - SERVICE_API_KEY=${SERVICE_API_KEY:-}
-      # Docling (optional - uncomment if running Docling)
-      # - DOCLING_SERVICE_URL=${DOCLING_SERVICE_URL:-}
-      # - DOCLING_TIMEOUT=${DOCLING_TIMEOUT:-300}
-      # - DOCLING_VERIFY_SSL=${DOCLING_VERIFY_SSL:-true}
+      # Docling proxy (document service routes complex docs to Docling)
+      - DOCLING_SERVICE_URL=${DOCLING_SERVICE_URL:-}
+      - DOCLING_TIMEOUT=${DOCLING_TIMEOUT:-300}
+      - DOCLING_VERIFY_SSL=${DOCLING_VERIFY_SSL:-true}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/api/v1/system/health"]

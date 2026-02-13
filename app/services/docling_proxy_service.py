@@ -21,13 +21,20 @@ logger = logging.getLogger("document_service.docling_proxy")
 _detected_endpoint: Optional[str] = None
 
 
-def _get_docling_params(endpoint: Optional[str] = None) -> Dict[str, Any]:
+def _get_docling_params(
+    endpoint: Optional[str] = None,
+    triage_overrides: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
     Get Docling-specific conversion parameters.
 
     API Version Differences:
     - v1.9.0+: Uses /v1/convert/file with 'pipeline' parameter
     - v0.7.0 (alpha): Uses /v1alpha/convert/file, no 'pipeline' parameter
+
+    Args:
+        endpoint: The API endpoint path being used.
+        triage_overrides: Optional overrides from triage analysis (e.g. do_ocr, table_mode).
     """
     endpoint_path = endpoint or "/v1/convert/file"
     is_alpha_api = "v1alpha" in endpoint_path
@@ -43,6 +50,12 @@ def _get_docling_params(endpoint: Optional[str] = None) -> Dict[str, Any]:
 
     if not is_alpha_api:
         params["pipeline"] = "standard"
+
+    # Apply triage-driven overrides
+    if triage_overrides:
+        for key, value in triage_overrides.items():
+            if key in params or key == "pdf_backend":
+                params[key] = value
 
     return params
 
@@ -100,6 +113,7 @@ async def extract_via_docling(
     file_path: str,
     filename: str,
     max_retries: int = 2,
+    docling_params: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str, bool, Optional[int]]:
     """
     Proxy extraction to external Docling service.
@@ -108,6 +122,7 @@ async def extract_via_docling(
         file_path: Path to the document file
         filename: Original filename
         max_retries: Maximum number of retry attempts
+        docling_params: Optional triage-driven parameter overrides (e.g. do_ocr, table_mode)
 
     Returns:
         (markdown_content, method, ocr_used, page_count)
@@ -177,7 +192,7 @@ async def extract_via_docling(
                     endpoint_url = f"{service_url}{endpoint}"
                     used_url = endpoint_url
                     used_endpoint = endpoint
-                    params = _get_docling_params(endpoint=endpoint)
+                    params = _get_docling_params(endpoint=endpoint, triage_overrides=docling_params)
 
                     response = await _post_with(endpoint_url, params, "files")
 
@@ -233,11 +248,12 @@ async def extract_via_docling(
                     markdown_content = response.text
 
                 if markdown_content and markdown_content.strip():
+                    ocr_was_used = params.get("do_ocr", True)
                     logger.info(
-                        "Docling extraction successful: %d characters from %s",
-                        len(markdown_content), filename,
+                        "Docling extraction successful: %d characters from %s (ocr=%s)",
+                        len(markdown_content), filename, ocr_was_used,
                     )
-                    return (markdown_content, "docling", True, None)
+                    return (markdown_content, "docling", ocr_was_used, None)
                 else:
                     logger.warning("Docling returned empty content for %s", filename)
 

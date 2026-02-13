@@ -121,3 +121,46 @@ async def test_docling_empty_response(sample_pdf, monkeypatch):
     # Empty content → falls through all retries → error
     assert content == ""
     assert method == "error"
+
+
+@pytest.mark.asyncio
+async def test_docling_params_override(sample_pdf, monkeypatch):
+    """Triage-driven overrides should be applied to Docling form data."""
+    from app import config
+    monkeypatch.setattr(config.settings, "DOCLING_SERVICE_URL", "http://docling:8080")
+    monkeypatch.setattr(config.settings, "DOCLING_TIMEOUT", 10)
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.headers = {"content-type": "application/json"}
+    mock_response.json.return_value = {
+        "document": {"md_content": "# Overridden\n\nContent."}
+    }
+    mock_response.raise_for_status = MagicMock()
+
+    captured_data = {}
+
+    async def capture_post(url, headers=None, files=None, data=None):
+        captured_data.update(data or {})
+        return mock_response
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.post = AsyncMock(side_effect=capture_post)
+    mock_client.get = AsyncMock(side_effect=Exception("skip openapi"))
+    mock_client.options = AsyncMock(return_value=MagicMock(status_code=200))
+
+    overrides = {"do_ocr": False, "table_mode": "fast"}
+
+    with patch("app.services.docling_proxy_service.httpx.AsyncClient", return_value=mock_client):
+        from app.services.docling_proxy_service import extract_via_docling
+        content, method, ocr, pages = await extract_via_docling(
+            sample_pdf, "test.pdf", docling_params=overrides,
+        )
+
+    assert method == "docling"
+    assert ocr is False  # OCR was overridden to False
+    # Verify the form data captured the overrides
+    assert captured_data.get("do_ocr") == "false"
+    assert captured_data.get("table_mode") == "fast"

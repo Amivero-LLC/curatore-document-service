@@ -107,6 +107,7 @@ async def extract(
             content_md, method, ocr_used, page_count = await extract_via_docling(
                 file_path=path,
                 filename=file.filename,
+                docling_params=triage_plan.get("docling_params"),
             )
 
         else:
@@ -158,6 +159,8 @@ async def extract(
             complexity=triage_plan["complexity"],
             triage_duration_ms=triage_plan.get("triage_duration_ms", 0),
             reason=triage_plan.get("reason", ""),
+            page_count=triage_plan.get("page_count"),
+            table_count=triage_plan.get("table_count"),
         )
 
         return ExtractionResult(

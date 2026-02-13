@@ -30,6 +30,8 @@ class TriageInfo(BaseModel):
     complexity: str
     triage_duration_ms: int = 0
     reason: str = ""
+    page_count: Optional[int] = None
+    table_count: Optional[int] = None
 
 
 class ExtractionResult(BaseModel):
