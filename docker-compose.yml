@@ -34,7 +34,7 @@ services:
       - DOCLING_VERIFY_SSL=${DOCLING_VERIFY_SSL:-true}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/api/v1/system/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/api/v1/system/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
