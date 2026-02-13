@@ -20,11 +20,6 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Tuple
 
-# Configure logging with more detail
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
 logger = logging.getLogger("document_service.extraction")
 
 __all__ = [
@@ -53,7 +48,11 @@ def _safe_mkdir(path: str) -> None:
 def save_upload_to_disk(file_obj, upload_dir: str) -> str:
     """Persist the uploaded file to disk and return the absolute path."""
     _safe_mkdir(upload_dir)
-    dest_path = os.path.join(upload_dir, file_obj.filename)
+    # Sanitize filename to prevent directory traversal attacks
+    safe_name = os.path.basename(file_obj.filename or "upload")
+    if not safe_name:
+        safe_name = "upload"
+    dest_path = os.path.join(upload_dir, safe_name)
     with open(dest_path, "wb") as f:
         f.write(file_obj.file.read())
     return dest_path

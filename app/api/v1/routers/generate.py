@@ -6,6 +6,7 @@ Returns raw bytes with appropriate Content-Type headers.
 """
 
 import logging
+import re
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
@@ -15,6 +16,15 @@ from ....services.generation_service import document_generation_service
 
 router = APIRouter(prefix="/generate", tags=["generation"])
 logger = logging.getLogger("document_service.api.generate")
+
+
+def _sanitize_filename(name: str, default: str, ext: str) -> str:
+    """Sanitize a filename for use in Content-Disposition headers."""
+    safe = re.sub(r'[^\w\s\-.]', '', name or default)
+    safe = safe.strip() or default
+    if not safe.endswith(ext):
+        safe += ext
+    return safe
 
 
 @router.post("/pdf")
@@ -31,7 +41,7 @@ async def generate_pdf(request: GeneratePdfRequest):
             css=request.css,
             include_title_page=request.include_title_page,
         )
-        filename = f"{request.title or 'document'}.pdf"
+        filename = _sanitize_filename(request.title, "document", ".pdf")
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
@@ -54,7 +64,7 @@ async def generate_docx(request: GenerateDocxRequest):
             content=request.content,
             title=request.title,
         )
-        filename = f"{request.title or 'document'}.docx"
+        filename = _sanitize_filename(request.title, "document", ".docx")
         return Response(
             content=docx_bytes,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -78,10 +88,11 @@ async def generate_csv(request: GenerateCsvRequest):
             columns=request.columns,
             include_bom=request.include_bom,
         )
+        filename = _sanitize_filename(None, "export", ".csv")
         return Response(
             content=csv_bytes,
             media_type="text/csv",
-            headers={"Content-Disposition": 'attachment; filename="export.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     except (RuntimeError, ValueError) as e:
         logger.error("CSV generation failed: %s", e)

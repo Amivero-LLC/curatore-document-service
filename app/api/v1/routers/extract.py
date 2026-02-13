@@ -12,6 +12,7 @@ Handles document extraction for all formats:
 import logging
 import os
 import time
+from pathlib import Path as PPath
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile
@@ -79,7 +80,6 @@ async def extract(
             await docling_health_service.check_health()
 
         # Run triage to determine engine
-        from pathlib import Path as PPath
         triage_plan = await triage_service.triage(
             file_path=PPath(path),
             mime_type=file.content_type,
@@ -205,7 +205,6 @@ async def extract(
         )
 
         metadata = {
-            "upload_path": path,
             "request_id": request_id,
             "elapsed_ms": elapsed_ms,
             **doc_metadata,

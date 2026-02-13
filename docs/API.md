@@ -4,7 +4,7 @@ Base URL: `http://localhost:8010/api/v1`
 
 ## Authentication
 
-Set `SERVICE_API_KEY` env var to enable auth. When set, all requests (except health) require:
+Set `SERVICE_API_KEY` env var to enable auth. When set, all requests (except health/system) require:
 
 ```
 Authorization: Bearer <SERVICE_API_KEY>
@@ -42,11 +42,10 @@ Extract text content from a document file.
   "page_count": 5,
   "media_type": "application/pdf",
   "metadata": {
-    "upload_path": "/tmp/document_uploads/document.pdf",
     "request_id": "abc-123",
     "elapsed_ms": 150,
     "file_info": { "filename": "document.pdf", "extension": ".pdf", "size_bytes": 50000 },
-    "content_info": { "character_count": 1234, "word_count": 200 },
+    "content_info": { "character_count": 1234, "word_count": 200, "line_count": 50 },
     "extraction_info": { "method": "fast_pdf", "timestamp": "2024-01-01T00:00:00Z" }
   },
   "triage": {
@@ -61,9 +60,28 @@ Extract text content from a document file.
 }
 ```
 
-**Response 401**: Missing/invalid API key
+**Error Responses**:
 
-**Response 422**: Unsupported format or no content extracted
+| Status | Meaning | When |
+|--------|---------|------|
+| 401 | Unauthorized | Missing or invalid `Authorization: Bearer` token |
+| 422 | Unprocessable Entity | Unsupported file format, or no text could be extracted |
+| 500 | Internal Server Error | Unexpected extraction failure |
+
+**Response 401**:
+```json
+{"detail": "Missing Authorization header"}
+```
+
+**Response 422**:
+```json
+{"detail": "No text could be extracted from this file. Request ID: abc-123"}
+```
+
+**Response 500**:
+```json
+{"detail": "Extraction failed: <error message>. Request ID: abc-123"}
+```
 
 ---
 
@@ -87,7 +105,19 @@ Generate a PDF from markdown content.
 }
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `content` | string | yes | Markdown content to convert |
+| `title` | string | no | Document title |
+| `css` | string | no | Custom CSS (uses default styling if omitted) |
+| `include_title_page` | bool | no | Add a title page at the beginning (default: false) |
+
 **Response 200**: Raw PDF bytes (`Content-Type: application/pdf`)
+
+**Response 500**:
+```json
+{"detail": "WeasyPrint is not installed"}
+```
 
 ---
 
@@ -107,7 +137,17 @@ Generate a DOCX from markdown content.
 }
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `content` | string | yes | Markdown content to convert |
+| `title` | string | no | Document title |
+
 **Response 200**: Raw DOCX bytes (`Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`)
+
+**Response 500**:
+```json
+{"detail": "python-docx is not installed"}
+```
 
 ---
 
@@ -131,9 +171,18 @@ Generate a CSV from structured data.
 }
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `data` | array | yes | List of row dictionaries |
+| `columns` | array | no | Column names and order (auto-detected from data keys if omitted) |
+| `include_bom` | bool | no | Include UTF-8 BOM for Excel compatibility (default: true) |
+
 **Response 200**: Raw CSV bytes (`Content-Type: text/csv`)
 
-**Response 422**: Empty data with no columns
+**Response 422**:
+```json
+{"detail": "No data and no columns provided; cannot generate CSV."}
+```
 
 ---
 
@@ -141,23 +190,49 @@ Generate a CSV from structured data.
 
 ### GET /api/v1/system/health
 
+Returns service health status, including Docling reachability when configured.
+
+**Response 200**:
 ```json
-{"status": "ok", "service": "document-service"}
+{
+  "status": "ok",
+  "service": "document-service",
+  "docling": {
+    "configured": true,
+    "reachable": true,
+    "last_error": null,
+    "last_check_age_seconds": 30,
+    "service_url": "http://docling:8080"
+  }
+}
 ```
 
 ### GET /api/v1/system/supported-formats
 
+Returns all file extensions supported for extraction.
+
+**Response 200**:
 ```json
-{"extensions": [".csv", ".doc", ".docx", ".eml", ...]}
+{"extensions": [".csv", ".doc", ".docx", ".eml", ".htm", ".html", ".json", ".md", ".msg", ".pdf", ".ppt", ".pptx", ".txt", ".xls", ".xlsb", ".xlsx", ".xml"]}
 ```
 
 ### GET /api/v1/system/capabilities
 
+Returns full service capabilities including extraction formats, generation formats, and Docling status.
+
+**Response 200**:
 ```json
 {
-  "extraction_formats": [".csv", ".doc", ".docx", ...],
+  "extraction_formats": [".csv", ".doc", ".docx", ".eml", ...],
   "generation_formats": ["pdf", "docx", "csv"],
   "triage_available": true,
-  "docling_available": false
+  "docling_available": false,
+  "docling": {
+    "configured": false,
+    "reachable": null,
+    "last_error": null,
+    "last_check_age_seconds": null,
+    "service_url": null
+  }
 }
 ```

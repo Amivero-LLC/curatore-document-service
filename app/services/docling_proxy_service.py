@@ -5,6 +5,7 @@ Proxies extraction requests to an external IBM Docling Serve instance
 for advanced document conversion with rich layout understanding.
 """
 
+import asyncio
 import logging
 import mimetypes
 from pathlib import Path
@@ -18,8 +19,9 @@ from .docling_health_service import docling_health_service
 logger = logging.getLogger("document_service.docling_proxy")
 
 
-# Cached detected endpoint
+# Cached detected endpoint (protected by _endpoint_lock for async safety)
 _detected_endpoint: Optional[str] = None
+_endpoint_lock = asyncio.Lock()
 
 
 def _reset_detected_endpoint() -> None:
@@ -70,42 +72,43 @@ def _get_docling_params(
 async def _detect_endpoint(client: httpx.AsyncClient) -> Optional[str]:
     """Detect Docling API endpoint using OpenAPI or probing."""
     global _detected_endpoint
-    if _detected_endpoint:
-        return _detected_endpoint
+    async with _endpoint_lock:
+        if _detected_endpoint:
+            return _detected_endpoint
 
-    service_url = settings.DOCLING_SERVICE_URL
+        service_url = settings.DOCLING_SERVICE_URL
 
-    if "v1alpha" in service_url.lower():
-        _detected_endpoint = "/v1alpha/convert/file"
-        return _detected_endpoint
+        if "v1alpha" in service_url.lower():
+            _detected_endpoint = "/v1alpha/convert/file"
+            return _detected_endpoint
 
-    # Try OpenAPI spec
-    try:
-        openapi_url = f"{service_url}/openapi.json"
-        response = await client.get(openapi_url)
-        if response.status_code == 200:
-            payload = response.json()
-            paths = payload.get("paths", {}) if isinstance(payload, dict) else {}
-            if "/v1/convert/file" in paths:
-                _detected_endpoint = "/v1/convert/file"
-                return _detected_endpoint
-            if "/v1alpha/convert/file" in paths:
-                _detected_endpoint = "/v1alpha/convert/file"
-                return _detected_endpoint
-    except Exception:
-        pass
-
-    # Probe endpoints
-    for endpoint in ["/v1/convert/file", "/v1alpha/convert/file"]:
+        # Try OpenAPI spec
         try:
-            probe = await client.options(f"{service_url}{endpoint}")
-            if probe.status_code != 404:
-                _detected_endpoint = endpoint
-                return _detected_endpoint
+            openapi_url = f"{service_url}/openapi.json"
+            response = await client.get(openapi_url)
+            if response.status_code == 200:
+                payload = response.json()
+                paths = payload.get("paths", {}) if isinstance(payload, dict) else {}
+                if "/v1/convert/file" in paths:
+                    _detected_endpoint = "/v1/convert/file"
+                    return _detected_endpoint
+                if "/v1alpha/convert/file" in paths:
+                    _detected_endpoint = "/v1alpha/convert/file"
+                    return _detected_endpoint
         except Exception:
-            continue
+            pass
 
-    return None
+        # Probe endpoints
+        for endpoint in ["/v1/convert/file", "/v1alpha/convert/file"]:
+            try:
+                probe = await client.options(f"{service_url}{endpoint}")
+                if probe.status_code != 404:
+                    _detected_endpoint = endpoint
+                    return _detected_endpoint
+            except Exception:
+                continue
+
+        return None
 
 
 def _build_endpoint_candidates(preferred: Optional[str]) -> list:

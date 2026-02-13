@@ -27,6 +27,9 @@ pytest tests/test_generation.py -v
 | `test_api_key_middleware.py` | API key auth (dev mode, valid/invalid keys, bypass) |
 | `test_docling_proxy.py` | Docling proxy with mocked httpx |
 | `test_system.py` | Health, supported-formats, capabilities endpoints |
+| `test_edge_cases.py` | Edge cases: path traversal, empty files, encodings, email, corrupted files, generation edge cases |
+| `test_docling_health.py` | Docling health service TTL caching and status |
+| `test_extract_fallback.py` | Fallback behavior when Docling extraction fails |
 
 ## Test Fixtures
 

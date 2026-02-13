@@ -7,7 +7,7 @@ Note: PDF and image metadata is extracted by fast_pdf/Docling engines.
 
 import logging
 import os
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -42,7 +42,7 @@ def extract_document_metadata(
         "content_info": _extract_content_info(content),
         "extraction_info": {
             "method": extraction_method,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         },
         "document_properties": {},
     }
@@ -63,7 +63,7 @@ def _extract_file_info(path: str, filename: str, ext: str) -> Dict[str, Any]:
             "extension": ext,
             "size_bytes": file_stats.st_size,
             "size_human": _format_bytes(file_stats.st_size),
-            "modified_time": datetime.fromtimestamp(file_stats.st_mtime).isoformat() + "Z",
+            "modified_time": datetime.fromtimestamp(file_stats.st_mtime, tz=UTC).isoformat().replace("+00:00", "Z"),
         }
     except Exception as e:
         logger.warning(f"Failed to extract file info: {e}")
