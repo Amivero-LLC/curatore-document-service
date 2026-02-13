@@ -54,6 +54,7 @@ app/
     ├── pdf_extraction_service.py # PyMuPDF PDF extraction
     ├── triage_service.py        # Document analysis + engine routing
     ├── docling_proxy_service.py # Proxy to external Docling service
+    ├── docling_health_service.py # Docling reachability monitoring (periodic probe)
     └── generation_service.py    # PDF/DOCX/CSV generation
 ```
 
@@ -78,6 +79,8 @@ Key environment variables (see `.env.example` for full list):
 | `DOCLING_SERVICE_URL` | (none) | Docling service URL. Unset = disabled |
 | `UPLOAD_DIR` | `/tmp/document_uploads` | Temp file directory |
 | `MAX_FILE_SIZE` | `52428800` | Max upload size (50MB) |
+| `DOCLING_TIMEOUT` | `300` | Docling request timeout (seconds) |
+| `DOCLING_VERIFY_SSL` | `true` | Verify SSL for Docling calls |
 
 ## Testing
 
@@ -85,6 +88,14 @@ Tests are in `tests/`. Run with `pytest tests/ -v`.
 
 Some tests skip when optional dependencies are missing (WeasyPrint, PyMuPDF, etc.).
 The Docling proxy tests use mocked httpx - no real Docling service needed.
+Auth middleware tests use `monkeypatch` to set/unset `SERVICE_API_KEY`.
+
+## CI
+
+GitHub Actions workflow at `.github/workflows/ci.yml` runs on push/PR to `main`:
+1. Installs system deps (LibreOffice, WeasyPrint libs)
+2. Installs Python dependencies
+3. Runs `pytest tests/ -v`
 
 ## Adding Features
 

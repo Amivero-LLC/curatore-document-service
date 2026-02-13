@@ -33,8 +33,14 @@ services:
       - DOCLING_TIMEOUT=${DOCLING_TIMEOUT:-300}
       - DOCLING_VERIFY_SSL=${DOCLING_VERIFY_SSL:-true}
     command: uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/api/v1/system/health')"]
+      test: ["CMD", "curl", "-f", "http://localhost:8010/api/v1/system/health"]
       interval: 30s
       timeout: 10s
       retries: 3
